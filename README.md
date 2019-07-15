@@ -1,14 +1,16 @@
 # discovronomicon
 A book of services to discover
 
-## Protocol
+This is a network using two protocols: One for intern communication and one for querying the network
+
+## Query Protocol
 There are three types of messages: `get`, `identity` and `ping`.
 
 All messages begin by this header:
 
 | type     | name  | description                |
 | -------- | ----- | -------------------------- |
-| u64      | magic | A magic value, must be 555 |
+| u16      | magic | A magic value, must be 555 |
 | char[10] | type  | The message type           |
 | u64      | len   | The length of the payload  |
 
@@ -40,3 +42,7 @@ This message will terminate the connection, but you are not requiered to send an
 | char[?] | protocol     | The protocol itself                                           |
 
 The response is a json array of URI.
+
+## Intern protocol
+
+TODO
