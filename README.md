@@ -25,6 +25,7 @@ This message has no payload
 This is the message you send the server to advertise what service you provide. If you don't send this message within 30s of the connection, or before your first ping the server will kick you.
 
 The payload is the following:
+
 | type    | name         | description                                                   |
 | ------- | ------------ | ------------------------------------------------------------- |
 | u64     | protocol_len | The length of the protocol text field, must be less than 100  |
