@@ -12,7 +12,8 @@ All messages begin by this header:
 | -------- | ----- | -------------------------- |
 | u16      | magic | A magic value, must be 555 |
 | char[10] | type  | The message type           |
-| u64      | len   | The length of the payload  |
+
+The header is then followed by a payload
 
 ### ping
 
