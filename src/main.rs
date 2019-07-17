@@ -1,36 +1,60 @@
-#![feature(async_await)]
+use actix::prelude::*;
+use actix_web::{web, App, Error, HttpResponse, HttpServer, Responder};
+use std::fmt;
 
-use tokio;
-//use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::codec::Encoder;
-use tokio::codec::Framed;
-use tokio::net::TcpListener;
-use futures::{SinkExt, StreamExt};
-use bytes::BytesMut;
+mod registry;
 
-use std::net::SocketAddr;
+#[derive(Debug)]
+pub enum InternError {
+    LockError,
+    MailError(MailboxError),
+}
 
-mod discover_message;
-use discover_message::{Message,MessageCodec};
-
-#[tokio::main]
-async fn main() {
-    let addr = SocketAddr::from(([0,0,0,0], 3333));
-    let mut listener = TcpListener::bind(&addr).unwrap();
-    println!("Listening on: {}", addr);
-    
-    let mut bytes = BytesMut::new();
-    MessageCodec::new().encode(Message::Ping, &mut bytes).unwrap();
-    println!("message: {:?}", bytes);
-
-    loop {
-        let (socket, _) = listener.accept().await.unwrap();
-
-        tokio::spawn(async move {
-            let mut messages = Framed::new(socket, MessageCodec::new());
-            while let Some(message) = messages.next().await {
-                println!("Message: {:?}", message);
-            }
-        });
+impl fmt::Display for InternError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InternError::LockError => write!(f, "Error in a lock"),
+            InternError::MailError(e) => write!(f, "Error in intern sending message: {}", e),
+        }
     }
+}
+
+impl std::error::Error for InternError {}
+
+impl<T> From<std::sync::PoisonError<T>> for InternError {
+    fn from(err: std::sync::PoisonError<T>) -> InternError {
+        InternError::LockError
+    }
+}
+
+impl From<MailboxError> for InternError {
+    fn from(err: MailboxError) -> InternError {
+        InternError::MailError(err)
+    }
+}
+
+fn register(
+    data: web::Data<Addr<registry::ServiceBook>>,
+    path: web::Path<registry::ServiceId>,
+) -> impl Future<Item = Option<registry::Session>, Error = InternError> {
+    data.recipient()
+        .send(registry::Register {
+            id: path.into_inner(),
+        })
+        .map_err(InternError::MailError)
+}
+
+fn main() {
+    let reg = registry::ServiceBook::new();
+    let reg_addr = reg.start();
+    HttpServer::new(|| {
+        App::new().data(reg_addr).route(
+            "/register/{protocol}/{address}",
+            web::get().to_async(register),
+        )
+    })
+    .bind("0.0.0.0:3333")
+    .unwrap()
+    .run()
+    .unwrap();
 }
