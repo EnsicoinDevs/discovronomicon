@@ -1,20 +1,25 @@
-use actix::prelude::*;
-use actix_web::{web, App, Error, HttpResponse, HttpServer, Responder};
+#![feature(proc_macro_hygiene, decl_macro)]
+
 use std::fmt;
+#[macro_use]
+extern crate rocket;
+use rocket::State;
+use rocket_contrib::json::Json;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::RwLock;
 
 mod registry;
 
 #[derive(Debug)]
 pub enum InternError {
     LockError,
-    MailError(MailboxError),
 }
 
 impl fmt::Display for InternError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InternError::LockError => write!(f, "Error in a lock"),
-            InternError::MailError(e) => write!(f, "Error in intern sending message: {}", e),
         }
     }
 }
@@ -22,39 +27,70 @@ impl fmt::Display for InternError {
 impl std::error::Error for InternError {}
 
 impl<T> From<std::sync::PoisonError<T>> for InternError {
-    fn from(err: std::sync::PoisonError<T>) -> InternError {
+    fn from(_: std::sync::PoisonError<T>) -> InternError {
         InternError::LockError
     }
 }
 
-impl From<MailboxError> for InternError {
-    fn from(err: MailboxError) -> InternError {
-        InternError::MailError(err)
-    }
+#[derive(Serialize, Deserialize)]
+struct RegisterRequest {
+    pub address: String,
 }
 
-fn register(
-    data: web::Data<Addr<registry::ServiceBook>>,
-    path: web::Path<registry::ServiceId>,
-) -> impl Future<Item = Option<registry::Session>, Error = InternError> {
-    data.recipient()
-        .send(registry::Register {
-            id: path.into_inner(),
-        })
-        .map_err(InternError::MailError)
+#[derive(Serialize, Deserialize)]
+struct RegisterResponse {
+    pub session: Option<registry::Session>,
 }
+
+#[post("/discover/<protocol>", data = "<identity>")]
+fn register(
+    protocol: String,
+    identity: Json<RegisterRequest>,
+    trusted: State<LockedBook>,
+) -> Result<Json<RegisterResponse>, InternError> {
+    Ok(Json(RegisterResponse {
+        session: trusted.write()?.add_address(registry::ServiceId {
+            protocol,
+            address: identity.into_inner().address,
+        }),
+    }))
+}
+
+#[derive(Serialize)]
+struct GetResponse {
+    pub trusted: Option<HashSet<String>>,
+}
+
+#[get("/discover/<protocol>")]
+fn get(protocol: String, trusted: State<LockedBook>) -> Result<Json<GetResponse>, InternError> {
+    Ok(Json(GetResponse {
+        trusted: trusted.read()?.get(&protocol).cloned(),
+    }))
+}
+
+#[derive(Serialize)]
+pub struct PingResponse {
+    pub ack: bool,
+}
+
+#[put("/ping/<token>")]
+fn ping(
+    token: rocket_contrib::uuid::Uuid,
+    trusted: State<LockedBook>,
+) -> Result<Json<PingResponse>, InternError> {
+    dbg!(trusted.read().unwrap());
+    Ok(Json(PingResponse {
+        ack: trusted.write()?.ping(&registry::Session {
+            token: token.into_inner(),
+        }),
+    }))
+}
+
+type LockedBook = RwLock<registry::ServiceBook>;
 
 fn main() {
-    let reg = registry::ServiceBook::new();
-    let reg_addr = reg.start();
-    HttpServer::new(|| {
-        App::new().data(reg_addr).route(
-            "/register/{protocol}/{address}",
-            web::get().to_async(register),
-        )
-    })
-    .bind("0.0.0.0:3333")
-    .unwrap()
-    .run()
-    .unwrap();
+    rocket::ignite()
+        .manage(RwLock::new(registry::ServiceBook::new()))
+        .mount("/", routes![register, get, ping])
+        .launch();
 }
