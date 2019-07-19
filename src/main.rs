@@ -6,7 +6,6 @@ extern crate rocket;
 use rocket::State;
 use rocket_contrib::json::Json;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::sync::RwLock;
 
 mod registry;
@@ -58,13 +57,13 @@ fn register(
 
 #[derive(Serialize)]
 struct GetResponse {
-    pub trusted: Option<HashSet<String>>,
+    pub trusted: Option<Vec<String>>,
 }
 
 #[get("/discover/<protocol>")]
 fn get(protocol: String, trusted: State<LockedBook>) -> Result<Json<GetResponse>, InternError> {
     Ok(Json(GetResponse {
-        trusted: trusted.read()?.get(&protocol).cloned(),
+        trusted: trusted.read()?.get(&protocol),
     }))
 }
 
@@ -78,7 +77,6 @@ fn ping(
     token: rocket_contrib::uuid::Uuid,
     trusted: State<LockedBook>,
 ) -> Result<Json<PingResponse>, InternError> {
-    dbg!(trusted.read().unwrap());
     Ok(Json(PingResponse {
         ack: trusted.write()?.ping(&registry::Session {
             token: token.into_inner(),
@@ -86,11 +84,28 @@ fn ping(
     }))
 }
 
-type LockedBook = RwLock<registry::ServiceBook>;
+type LockedBook = std::sync::Arc<RwLock<registry::ServiceBook>>;
+
+fn clean_ping(trusted: LockedBook) {
+    let duration = std::time::Duration::from_secs(30);
+    std::thread::Builder::new()
+        .name("cleaner".to_owned())
+        .spawn(move || loop {
+            std::thread::sleep(duration);
+            trusted
+                .write()
+                .expect("Could not acquire lock")
+                .clean(duration);
+            dbg!(trusted.read().unwrap());
+        })
+        .expect("Could not start cleaning");
+}
 
 fn main() {
-    rocket::ignite()
-        .manage(RwLock::new(registry::ServiceBook::new()))
-        .mount("/", routes![register, get, ping])
-        .launch();
+    let book = std::sync::Arc::new(RwLock::new(registry::ServiceBook::new()));
+    let rkt = rocket::ignite()
+        .manage(book.clone())
+        .mount("/", routes![register, get, ping]);
+    clean_ping(book);
+    rkt.launch();
 }
