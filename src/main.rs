@@ -58,12 +58,14 @@ fn register(
 #[derive(Serialize)]
 struct GetResponse {
     pub trusted: Option<Vec<String>>,
+    pub untrusted: Option<Vec<String>>,
 }
 
 #[get("/discover/<protocol>")]
 fn get(protocol: String, trusted: State<LockedBook>) -> Result<Json<GetResponse>, InternError> {
     Ok(Json(GetResponse {
         trusted: trusted.read()?.get(&protocol),
+        untrusted: None,
     }))
 }
 
