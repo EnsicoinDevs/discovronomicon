@@ -17,14 +17,14 @@ The response to such a request is a JSON object of the form
 
 ```json
 {
-	"session": null / [SESSION]
+	"session": "SESSION"
 }
 ```
 
 and a `SESSION` object is:
 ```json
 {
-	"token": UUID
+	"token": "UUID"
 }
 ```
 
@@ -36,7 +36,7 @@ A response is given to a ping:
 
 ```json
 {
-	"ack": true/false
+	"ack": "bool"
 }
 ```
 This boolean tells you if you pinged a known service or not.
