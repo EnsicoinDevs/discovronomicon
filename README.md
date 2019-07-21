@@ -1,50 +1,60 @@
 # discovronomicon
-A book of services to discover
+A book of services to discover, using a REST API. 
 
-This is a network using two protocols: One for intern communication and one for querying the network
+A service implements a certain `protocol`, for example `ftp`.
 
-## Query Protocol
-There are three types of messages: `get`, `identity` and `ping`.
+## Registration
 
-All messages begin by this header:
+A service makes a `POST` to `/discover/<protocol>` with JSON data of the form:
 
-| type     | name  | description                |
-| -------- | ----- | -------------------------- |
-| u16      | magic | A magic value, must be 555 |
-| char[10] | type  | The message type           |
+```json
+{
+	"address": "_"
+}
+```
 
-The header is then followed by a payload
+The response to such a request is a JSON object of the form
 
-### ping
+```json
+{
+	"session": null / [SESSION]
+}
+```
 
-You must send a ping to the server at least evry 60s, else the server will close the connection. The server will respond with a ping message as well. The server will never ping you on it's own.
+and a `SESSION` object is:
+```json
+{
+	"token": UUID
+}
+```
 
-This message has no payload
+If the responses does not contain a session object it mean that the server does not accept the registration. Reasons could be a banned protocol, the service being already registered or a banned IP.
 
-### identity
+It is then expected to recieve a `PUT` request on `/ping/<token>` using the supplied token evry 60s, else the service will be unregistered.
 
-This is the message you send the server to advertise what service you provide. If you don't send this message within 30s of the connection, or before your first ping the server will kick you.
+A response is given to a ping: 
 
-The payload is the following:
+```json
+{
+	"ack": true/false
+}
+```
+This boolean tells you if you pinged a known service or not.
 
-| type    | name         | description                                                   |
-| ------- | ------------ | ------------------------------------------------------------- |
-| u64     | protocol_len | The length of the protocol text field, must be less than 100  |
-| char[?] | protocol     | The protocol itself                                           |
-| u64     | address_len  | The length of the address field, it can be an URI of any kind |
-| char[?] | address      | The URI address                                               |
+## Discover
 
-### get
+To discover a service you can do a `GET` on `/discover/<protocol>`.
 
-This message will terminate the connection, but you are not requiered to send anything else, it will retrieve you in JSON the list of all know services in the protocol.
+You get in response:
+```json
+{
+	"trusted":[],
+	"untrusted":[]
+}
+```
 
-| type    | name         | description                                                   |
-| ------- | ------------ | ------------------------------------------------------------- |
-| u64     | protocol_len | The length of the protocol text field, must be less than 100  |
-| char[?] | protocol     | The protocol itself                                           |
+Where both are arrays of addresses to services, trusted represents all services who have directly pinged the node, and untrusted are the ones that the discover network produced.
 
-The response is a json array of URI.
-
-## Intern protocol
+## Synchronisation
 
 TODO
