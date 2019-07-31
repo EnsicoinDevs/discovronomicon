@@ -1,5 +1,5 @@
 # discovronomicon
-A book of services to discover, using a REST API. 
+A book of services to discover, using a REST API, implementing the `service_book` protocol.
 
 A service implements a certain `protocol`, for example `ftp`.
 
