@@ -1,36 +1,23 @@
-use serde::{Deserialize, Serialize};
+use service_book::{ServiceIdentity, Session};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Debug)]
-pub struct ServiceId {
-    pub protocol: String,
-    pub address: String,
-}
-
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct Service {
     pub last_seen: std::time::Instant,
-    pub id: ServiceId,
+    pub id: ServiceIdentity,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy, Debug)]
-pub struct Session {
-    pub token: Uuid,
-}
-
-impl Session {
-    pub fn new() -> Session {
-        Session {
-            token: Uuid::new_v4(),
-        }
+fn new_v4_session() -> Session {
+    Session {
+        token: Uuid::new_v4(),
     }
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct ServiceBook {
     trusted: HashMap<Session, Service>,
-    known: HashSet<ServiceId>,
+    known: HashSet<ServiceIdentity>,
     protocol: HashMap<String, HashMap<Session, String>>,
     //database:
 }
@@ -80,7 +67,7 @@ impl ServiceBook {
             .map(|h| h.values().map(|a| a.clone()).collect())
     }
 
-    pub fn add_address(&mut self, id: ServiceId) -> Option<Session> {
+    pub fn add_address(&mut self, id: ServiceIdentity) -> Option<Session> {
         if self.known.contains(&id) {
             None
         } else {
@@ -89,7 +76,7 @@ impl ServiceBook {
                 id: id.clone(),
             };
             self.known.insert(id);
-            let connection = Session::new();
+            let connection = new_v4_session();
             self.protocol
                 .entry(service.id.protocol.clone())
                 .or_insert_with(HashMap::new)

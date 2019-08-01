@@ -5,7 +5,9 @@ use std::fmt;
 extern crate rocket;
 use rocket::State;
 use rocket_contrib::json::Json;
-use serde::{Deserialize, Serialize};
+use service_book::{
+    Address, PingResponse, RegisterResponse, ServiceIdentity, ServiceList, Session,
+};
 use std::sync::RwLock;
 
 mod registry;
@@ -31,47 +33,26 @@ impl<T> From<std::sync::PoisonError<T>> for InternError {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct RegisterRequest {
-    pub address: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct RegisterResponse {
-    pub session: Option<registry::Session>,
-}
-
 #[post("/discover/<protocol>", data = "<identity>")]
 fn register(
     protocol: String,
-    identity: Json<RegisterRequest>,
+    identity: Json<Address>,
     trusted: State<LockedBook>,
 ) -> Result<Json<RegisterResponse>, InternError> {
     Ok(Json(RegisterResponse {
-        session: trusted.write()?.add_address(registry::ServiceId {
+        session: trusted.write()?.add_address(ServiceIdentity {
             protocol,
             address: identity.into_inner().address,
         }),
     }))
 }
 
-#[derive(Serialize)]
-struct GetResponse {
-    pub trusted: Option<Vec<String>>,
-    pub untrusted: Option<Vec<String>>,
-}
-
 #[get("/discover/<protocol>")]
-fn get(protocol: String, trusted: State<LockedBook>) -> Result<Json<GetResponse>, InternError> {
-    Ok(Json(GetResponse {
-        trusted: trusted.read()?.get(&protocol),
-        untrusted: None,
+fn get(protocol: String, trusted: State<LockedBook>) -> Result<Json<ServiceList>, InternError> {
+    Ok(Json(ServiceList {
+        trusted: trusted.read()?.get(&protocol).unwrap_or_else(Vec::new),
+        untrusted: Vec::new(),
     }))
-}
-
-#[derive(Serialize)]
-pub struct PingResponse {
-    pub ack: bool,
 }
 
 #[put("/ping/<token>")]
@@ -80,7 +61,7 @@ fn ping(
     trusted: State<LockedBook>,
 ) -> Result<Json<PingResponse>, InternError> {
     Ok(Json(PingResponse {
-        ack: trusted.write()?.ping(&registry::Session {
+        ack: trusted.write()?.ping(&Session {
             token: token.into_inner(),
         }),
     }))
@@ -98,7 +79,6 @@ fn clean_ping(trusted: LockedBook) {
                 .write()
                 .expect("Could not acquire lock")
                 .clean(duration);
-            dbg!(trusted.read().unwrap());
         })
         .expect("Could not start cleaning");
 }
